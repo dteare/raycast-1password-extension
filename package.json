@@ -2,9 +2,9 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "1password8",
   "title": "1Password 8",
-  "description": "Search, open or edit your 1Password 8 passwords from Raycast.",
+  "description": "Search, open, or edit your 1Password 8 items from Raycast.",
   "icon": "1password-icon.png",
-  "author": "dteare <dave@1password.com> (https://twitter.com/dteare)",
+  "author": "dteare",
   "contributors": [
     "khasbilegt"
   ],
@@ -47,6 +47,8 @@
   },
   "scripts": {
     "build": "ray build -e dist",
-    "dev": "ray develop"
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint"
   }
 }
