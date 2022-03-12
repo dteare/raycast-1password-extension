@@ -13,6 +13,7 @@ export default class OnePasswordMetaItem {
   accountName?: string;
   createdAt: number;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(metaItem: any) {
     this.uuid = metaItem.uuid;
     this.itemDescription = metaItem.itemDescription;
