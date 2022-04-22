@@ -1,53 +1,27 @@
-import { ActionPanel, Detail, environment, Icon, List, popToRoot, showHUD, showToast, ToastStyle } from "@raycast/api";
+import { ActionPanel, Detail, environment, Icon, List, popToRoot, showToast, Action, Toast } from "@raycast/api";
 import fg from "fast-glob";
 import fs from "fs";
-import open from "open";
-import os from "os";
 import OnePasswordMetaItem from "./OnePasswordMetaItem.dto";
 import { useEffect, useState } from "react";
 import OnePasswordMetaItemsCategory from "./OnePasswordMetaItemsCategory.dto";
+import onePassword from "./onePassword";
 
-// This is the default location of `opbookmarks`. @see https://github.com/dteare/opbookmarks
-const ONE_PASSWORD_8_CLI_FOLDER = `${os.homedir()}/.config/op/bookmarks`;
 const CACHE_DIR = environment.supportPath;
 const CACHE_FILE = `${CACHE_DIR}/cache.json`;
-const CLI_REQUIRED_MESSAGE = `
-# Enable 3rd party app integrations to use
-
-To use this extension please install the 1Password CLI and run \`opbookmarks\`.
-
-1. Make sure you using 1Password 8
-1. Install the [1Password CLI](https://developer.1password.com/docs/cli)
-1. Open and unlock 1Password
-1. Choose 1Password > Preferences > Developers and enable CLI integration
-1. Use [opbookmarks](https://github.com/dteare/opbookmarks) to export your item metadata
-
-## This extension has no access to your passwords only to the metadata. 
-
-The metadata includes the following information about each item:
-- title
-- description
-- URLs
-- vault name
-- item category
-- account name
-- vault identifier
-- item identifier
-`;
 
 type ActionProps = {
   onePasswordMetaItem: OnePasswordMetaItem;
 };
 
 async function getPasswords(): Promise<OnePasswordMetaItem[] | void> {
-  if (fs.existsSync(ONE_PASSWORD_8_CLI_FOLDER)) {
+  if (fs.existsSync(onePassword.cliFolder)) {
     try {
       const cache = getCache();
 
       if (Array.isArray(cache)) {
         return Promise.resolve(cache);
       } else {
-        const metaItems = await fg([`${ONE_PASSWORD_8_CLI_FOLDER}/**/*.onepassword-item-metadata`], {
+        const metaItems = await fg([`${onePassword.cliFolder}/**/*.onepassword-item-metadata`], {
           onlyFiles: true,
           deep: 2,
         });
@@ -59,15 +33,18 @@ async function getPasswords(): Promise<OnePasswordMetaItem[] | void> {
         return Promise.resolve(onePasswordMetaItems);
       }
     } catch (error) {
-      showToast(ToastStyle.Failure, "Error", "Could not read 1Passwords database");
+      showToast({
+        style: Toast.Style.Failure,
+        title: "Error",
+        message: "Could not read 1Passwords database",
+      });
       return Promise.resolve([]);
     }
   }
 }
 
-/**
- * Main command
- */
+// Main command
+
 export default function Command() {
   const [onePasswordMetaItems, setOnePasswordMetaItems] = useState<OnePasswordMetaItem[]>();
 
@@ -75,10 +52,10 @@ export default function Command() {
     getPasswords().then((value) => setOnePasswordMetaItems(value as OnePasswordMetaItem[]));
   }, [setOnePasswordMetaItems]);
 
-  return fs.existsSync(ONE_PASSWORD_8_CLI_FOLDER) ? (
+  return fs.existsSync(onePassword.cliFolder) ? (
     <PasswordList onePasswordMetaItems={onePasswordMetaItems} />
   ) : (
-    <Detail markdown={CLI_REQUIRED_MESSAGE} />
+    <Detail markdown={onePassword.installationGuide} />
   );
 }
 
@@ -181,77 +158,69 @@ function PasswordListItem(props: { onePasswordMetaItem: OnePasswordMetaItem }) {
 }
 
 // Actions
-async function perform1PasswordAction(action: string, onePasswordMetaItem: OnePasswordMetaItem, message: string) {
-  const url = `onepassword://${action}/?a=${onePasswordMetaItem.profileUUID}&v=${onePasswordMetaItem.vaultUUID}&i=${onePasswordMetaItem.uuid}`;
 
-  popToRoot({ clearSearchBar: true });
+const OpenAndFillAction = ({ onePasswordMetaItem }: ActionProps) => {
+  return onePasswordMetaItem.websiteURLs?.length ? (
+    <Action
+      icon={Icon.Link}
+      title="Open and Fill"
+      onAction={async () => {
+        try {
+          await onePassword.openAndFill(onePasswordMetaItem);
+          await popToRoot({ clearSearchBar: true });
+        } catch (error) {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "Failed opening and filling item",
+            message: error instanceof Error ? error.message : undefined,
+          });
+        }
+      }}
+    />
+  ) : null;
+};
 
-  console.log(`Opening 1Password URL <${url}>`);
+const ViewAction = ({ onePasswordMetaItem }: ActionProps) => {
+  return (
+    <Action
+      icon={Icon.Eye}
+      title="View"
+      onAction={async () => {
+        try {
+          await onePassword.view(onePasswordMetaItem);
+        } catch (error) {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "Failed viewing item",
+            message: error instanceof Error ? error.message : undefined,
+          });
+        }
+      }}
+    />
+  );
+};
 
-  await open(url, { app: { name: "1Password" } });
+const EditAction = ({ onePasswordMetaItem }: ActionProps) => {
+  return (
+    <Action
+      icon={Icon.Gear}
+      title="Edit"
+      onAction={async () => {
+        try {
+          await onePassword.edit(onePasswordMetaItem);
+        } catch (error) {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "Failed editing item",
+            message: error instanceof Error ? error.message : undefined,
+          });
+        }
+      }}
+    />
+  );
+};
 
-  showHUD(message);
-}
-
-async function performOpenInBrowserAction(onePasswordMetaItem: OnePasswordMetaItem, message: string) {
-  const website = onePasswordMetaItem.websiteURLs?.[0];
-
-  if (!website) {
-    showToast(ToastStyle.Failure, "Error", `${onePasswordMetaItem.itemTitle} has no website to open.`);
-    return;
-  }
-
-  const url = `${website}/?a=${onePasswordMetaItem.profileUUID}&v=${onePasswordMetaItem.vaultUUID}&i=${onePasswordMetaItem.uuid}`;
-
-  popToRoot({ clearSearchBar: true });
-
-  await open(url);
-
-  showHUD(message);
-}
-
-const OpenAndFillAction = ({ onePasswordMetaItem }: ActionProps): JSX.Element => (
-  <ActionPanel.Item
-    icon={Icon.Link}
-    title="Open"
-    onAction={async () => {
-      performOpenInBrowserAction(
-        onePasswordMetaItem,
-        `Opening ${onePasswordMetaItem.itemTitle} in your default browser`
-      );
-    }}
-  />
-);
-
-const ViewAction = ({ onePasswordMetaItem }: ActionProps): JSX.Element => (
-  <ActionPanel.Item
-    icon={Icon.Eye}
-    title="View in 1Password"
-    shortcut={{ modifiers: ["cmd"], key: "v" }}
-    onAction={async () => {
-      await perform1PasswordAction(
-        "view-item",
-        onePasswordMetaItem,
-        `Opening ${onePasswordMetaItem.itemTitle} in 1Password`
-      );
-    }}
-  />
-);
-
-const EditAction = ({ onePasswordMetaItem }: ActionProps): JSX.Element => (
-  <ActionPanel.Item
-    icon={Icon.Gear}
-    title="Edit in 1Password"
-    shortcut={{ modifiers: ["cmd"], key: "e" }}
-    onAction={async () => {
-      await perform1PasswordAction(
-        "edit-item",
-        onePasswordMetaItem,
-        `Opening ${onePasswordMetaItem.itemTitle} in 1Password to edit`
-      );
-    }}
-  />
-);
+// Cache
 
 function setCache(data: OnePasswordMetaItem[], ttl = 300) {
   return fs.existsSync(CACHE_DIR)

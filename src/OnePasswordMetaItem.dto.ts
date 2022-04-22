@@ -7,13 +7,12 @@ export default class OnePasswordMetaItem {
   categoryPluralName: string;
   modifiedAt: number;
   profileUUID: string;
-  websiteURLs: string[];
+  websiteURLs?: string[];
   categorySingularName: string;
   categoryUUID: string;
   accountName?: string;
   createdAt: number;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(metaItem: any) {
     this.uuid = metaItem.uuid;
     this.itemDescription = metaItem.itemDescription;
